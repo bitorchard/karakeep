@@ -20,8 +20,10 @@ import {
 import { deleteUserAssets } from "@karakeep/shared/assetdb";
 import serverConfig from "@karakeep/shared/config";
 import {
+  zLangfuseSettingsSchema,
   zResetPasswordSchema,
   zSignUpSchema,
+  zUpdateLangfuseSettingsSchema,
   zUpdateUserSettingsSchema,
   zUserSettingsSchema,
   zUserStatsResponseSchema,
@@ -473,6 +475,56 @@ export class User implements PrivacyAware {
         bookmarkClickAction: input.bookmarkClickAction,
         archiveDisplayBehaviour: input.archiveDisplayBehaviour,
         timezone: input.timezone,
+      })
+      .where(eq(users.id, this.user.id));
+  }
+
+  async getLangfuseSettings(): Promise<z.infer<typeof zLangfuseSettingsSchema>> {
+    const settings = await this.ctx.db.query.users.findFirst({
+      where: eq(users.id, this.user.id),
+      columns: {
+        langfuseEnabled: true,
+        langfusePublicKey: true,
+        langfuseSecretKey: true,
+        langfuseHost: true,
+        langfusePromptName: true,
+      },
+    });
+
+    if (!settings) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "User not found",
+      });
+    }
+
+    return {
+      langfuseEnabled: settings.langfuseEnabled || false,
+      langfusePublicKey: settings.langfusePublicKey,
+      langfuseSecretKey: settings.langfuseSecretKey,
+      langfuseHost: settings.langfuseHost,
+      langfusePromptName: settings.langfusePromptName,
+    };
+  }
+
+  async updateLangfuseSettings(
+    input: z.infer<typeof zUpdateLangfuseSettingsSchema>,
+  ): Promise<void> {
+    if (Object.keys(input).length === 0) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "No settings provided",
+      });
+    }
+
+    await this.ctx.db
+      .update(users)
+      .set({
+        langfuseEnabled: input.langfuseEnabled,
+        langfusePublicKey: input.langfusePublicKey,
+        langfuseSecretKey: input.langfuseSecretKey,
+        langfuseHost: input.langfuseHost,
+        langfusePromptName: input.langfusePromptName,
       })
       .where(eq(users.id, this.user.id));
   }

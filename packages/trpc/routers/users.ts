@@ -3,8 +3,10 @@ import { z } from "zod";
 
 import serverConfig from "@karakeep/shared/config";
 import {
+  zLangfuseSettingsSchema,
   zResetPasswordSchema,
   zSignUpSchema,
+  zUpdateLangfuseSettingsSchema,
   zUpdateUserSettingsSchema,
   zUserSettingsSchema,
   zUserStatsResponseSchema,
@@ -199,5 +201,17 @@ export const usersAppRouter = router({
     .mutation(async ({ input, ctx }) => {
       await User.resetPassword(ctx, input);
       return { success: true };
+    }),
+  langfuseSettings: authedProcedure
+    .output(zLangfuseSettingsSchema)
+    .query(async ({ ctx }) => {
+      const user = await User.fromCtx(ctx);
+      return await user.getLangfuseSettings();
+    }),
+  updateLangfuseSettings: authedProcedure
+    .input(zUpdateLangfuseSettingsSchema)
+    .mutation(async ({ input, ctx }) => {
+      const user = await User.fromCtx(ctx);
+      await user.updateLangfuseSettings(input);
     }),
 });

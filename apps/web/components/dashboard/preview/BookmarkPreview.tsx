@@ -26,6 +26,7 @@ import {
   isBookmarkStillCrawling,
 } from "@karakeep/shared/utils/bookmarkUtils";
 
+import { AIExtractionsDisplay } from "../bookmarks/AIExtractionsDisplay";
 import SummarizeBookmarkArea from "../bookmarks/SummarizeBookmarkArea";
 import ActionBar from "./ActionBar";
 import { AssetContentSection } from "./AssetContentSection";
@@ -187,6 +188,9 @@ export default function BookmarkPreview({
       <CreationTime createdAt={bookmark.createdAt} />
       <BookmarkMetadata bookmark={bookmark} />
       <SummarizeBookmarkArea bookmark={bookmark} />
+      {bookmark.aiExtractions && (
+        <AIExtractionsDisplay aiExtractions={bookmark.aiExtractions} />
+      )}
       <div className="flex items-center gap-4">
         <p className="text-sm text-gray-400">{t("common.tags")}</p>
         <BookmarkTagsEditor bookmark={bookmark} />

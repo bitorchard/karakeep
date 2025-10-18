@@ -93,6 +93,9 @@ export const zBookmarkSourceSchema = z.enum([
 ]);
 export type ZBookmarkSource = z.infer<typeof zBookmarkSourceSchema>;
 
+export const zAiExtractionsSchema = z.record(z.unknown()).nullable();
+export type ZAiExtractions = z.infer<typeof zAiExtractionsSchema>;
+
 export const zBareBookmarkSchema = z.object({
   id: z.string(),
   createdAt: z.date(),
@@ -104,6 +107,7 @@ export const zBareBookmarkSchema = z.object({
   summarizationStatus: z.enum(["success", "failure", "pending"]).nullable(),
   note: z.string().nullish(),
   summary: z.string().nullish(),
+  aiExtractions: zAiExtractionsSchema,
   source: zBookmarkSourceSchema.nullish(),
 });
 

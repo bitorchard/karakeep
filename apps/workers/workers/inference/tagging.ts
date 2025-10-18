@@ -13,6 +13,7 @@ import {
   bookmarkTags,
   customPrompts,
   tagsOnBookmarks,
+  users,
 } from "@karakeep/db/schema";
 import {
   triggerRuleEngineOnEvent,
@@ -21,14 +22,41 @@ import {
 } from "@karakeep/shared-server";
 import { ASSET_TYPES, readAsset } from "@karakeep/shared/assetdb";
 import serverConfig from "@karakeep/shared/config";
+import { createLangfuseClient } from "@karakeep/shared/langfuse";
 import logger from "@karakeep/shared/logger";
 import { buildImagePrompt, buildTextPrompt } from "@karakeep/shared/prompts";
 import { DequeuedJob, EnqueueOptions } from "@karakeep/shared/queueing";
 import { Bookmark } from "@karakeep/trpc/models/bookmarks";
 
-const openAIResponseSchema = z.object({
-  tags: z.array(z.string()),
-});
+// Entity schema for structured AI extractions
+// Define a flexible value type that covers common property types
+const entityPropertyValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.string()),
+  z.object({
+    relation_type: z.string(),
+    value: z.string(),
+  }),
+  z.record(z.string()),
+]);
+
+const entitySchema = z.object({
+  type: z.string(),
+  id: z.string(),
+  attributes: z.record(z.unknown()).optional(), // Completely flexible
+}).passthrough(); // Allow any extra fields on entities
+
+const openAIResponseSchema = z
+  .object({
+    // Required for backward compatibility with mobile client
+    tags: z.array(z.string()),
+    // New entity-based extraction format - all optional for loose validation
+    entities: z.array(entitySchema).optional(),
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .passthrough(); // Allow any additional fields
 
 function parseJsonFromLLMResponse(response: string): unknown {
   const trimmedResponse = response.trim();
@@ -78,7 +106,37 @@ function tagNormalizer(col: Column) {
 }
 async function buildPrompt(
   bookmark: NonNullable<Awaited<ReturnType<typeof fetchBookmark>>>,
-): Promise<string | null> {
+  langfusePrompt?: string | null,
+): Promise<{ prompt: string; promptVersion?: string } | null> {
+  // If Langfuse prompt is provided, use it directly
+  if (langfusePrompt) {
+    let content = "";
+    if (bookmark.link) {
+      content =
+        (await Bookmark.getBookmarkPlainTextContent(
+          bookmark.link,
+          bookmark.userId,
+        )) ?? "";
+      if (!bookmark.link.description && !content) {
+        logger.info(
+          `[inference] No content found for link "${bookmark.id}". Skipping tagging.`,
+        );
+        return null;
+      }
+      content = `URL: ${bookmark.link.url}
+Title: ${bookmark.link.title ?? ""}
+Description: ${bookmark.link.description ?? ""}
+Content: ${content ?? ""}`;
+    } else if (bookmark.text) {
+      content = bookmark.text.text ?? "";
+    }
+
+    // Langfuse prompt should already include instructions and placeholders
+    const finalPrompt = langfusePrompt.replace(/<TEXT_CONTENT>[\s\S]*?<\/TEXT_CONTENT>/g, `<TEXT_CONTENT>\n${content}\n</TEXT_CONTENT>`);
+    return { prompt: finalPrompt, promptVersion: "langfuse" };
+  }
+
+  // Otherwise use custom prompts or default
   const prompts = await fetchCustomPrompts(bookmark.userId, "text");
   if (bookmark.link) {
     let content =
@@ -88,30 +146,35 @@ async function buildPrompt(
       )) ?? "";
 
     if (!bookmark.link.description && !content) {
-      // No content to infer from; signal skip to avoid marking job as failed
       logger.info(
         `[inference] No content found for link "${bookmark.id}". Skipping tagging.`,
       );
       return null;
     }
-    return buildTextPrompt(
-      serverConfig.inference.inferredTagLang,
-      prompts,
-      `URL: ${bookmark.link.url}
+    return {
+      prompt: buildTextPrompt(
+        serverConfig.inference.inferredTagLang,
+        prompts,
+        `URL: ${bookmark.link.url}
 Title: ${bookmark.link.title ?? ""}
 Description: ${bookmark.link.description ?? ""}
 Content: ${content ?? ""}`,
-      serverConfig.inference.contextLength,
-    );
+        serverConfig.inference.contextLength,
+      ),
+      promptVersion: prompts.length > 0 ? "custom" : "default",
+    };
   }
 
   if (bookmark.text) {
-    return buildTextPrompt(
-      serverConfig.inference.inferredTagLang,
-      prompts,
-      bookmark.text.text ?? "",
-      serverConfig.inference.contextLength,
-    );
+    return {
+      prompt: buildTextPrompt(
+        serverConfig.inference.inferredTagLang,
+        prompts,
+        bookmark.text.text ?? "",
+        serverConfig.inference.contextLength,
+      ),
+      promptVersion: prompts.length > 0 ? "custom" : "default",
+    };
   }
 
   throw new Error("Unknown bookmark type");
@@ -231,15 +294,19 @@ async function inferTagsFromText(
   bookmark: NonNullable<Awaited<ReturnType<typeof fetchBookmark>>>,
   inferenceClient: InferenceClient,
   abortSignal: AbortSignal,
+  langfusePrompt?: string | null,
 ) {
-  const prompt = await buildPrompt(bookmark);
-  if (!prompt) {
+  const promptData = await buildPrompt(bookmark, langfusePrompt);
+  if (!promptData) {
     return null;
   }
-  return await inferenceClient.inferFromText(prompt, {
-    schema: openAIResponseSchema,
-    abortSignal,
-  });
+  return {
+    response: await inferenceClient.inferFromText(promptData.prompt, {
+      schema: openAIResponseSchema,
+      abortSignal,
+    }),
+    promptVersion: promptData.promptVersion,
+  };
 }
 
 async function inferTags(
@@ -247,10 +314,18 @@ async function inferTags(
   bookmark: NonNullable<Awaited<ReturnType<typeof fetchBookmark>>>,
   inferenceClient: InferenceClient,
   abortSignal: AbortSignal,
-) {
-  let response: InferenceResponse | null;
+  langfusePrompt?: string | null,
+): Promise<{ tags: string[]; aiExtractions: Record<string, unknown>; promptVersion?: string } | null> {
+  let responseData: { response: InferenceResponse; promptVersion?: string } | null = null;
+  let response: InferenceResponse | null = null;
+  let promptVersion: string | undefined;
+
   if (bookmark.link || bookmark.text) {
-    response = await inferTagsFromText(bookmark, inferenceClient, abortSignal);
+    responseData = await inferTagsFromText(bookmark, inferenceClient, abortSignal, langfusePrompt);
+    if (responseData) {
+      response = responseData.response;
+      promptVersion = responseData.promptVersion;
+    }
   } else if (bookmark.asset) {
     switch (bookmark.asset.assetType) {
       case "image":
@@ -282,9 +357,11 @@ async function inferTags(
   }
 
   try {
-    let tags = openAIResponseSchema.parse(
+    const parsedResponse = openAIResponseSchema.parse(
       parseJsonFromLLMResponse(response.response),
-    ).tags;
+    );
+    
+    let tags = parsedResponse.tags || [];
     logger.info(
       `[inference][${jobId}] Inferring tag for bookmark "${bookmark.id}" used ${response.totalTokens} tokens and inferred: ${tags}`,
     );
@@ -299,7 +376,7 @@ async function inferTags(
       return tag.trim();
     });
 
-    return tags;
+    return { tags, aiExtractions: parsedResponse, promptVersion };
   } catch (e) {
     const responseSneak = response.response.substring(0, 20);
     throw new Error(
@@ -441,21 +518,113 @@ export async function runTagging(
     `[inference][${jobId}] Starting an inference job for bookmark with id "${bookmark.id}"`,
   );
 
-  const tags = await inferTags(
+  // Fetch user's Langfuse settings
+  const userSettings = await db.query.users.findFirst({
+    where: eq(users.id, bookmark.userId),
+    columns: {
+      langfuseEnabled: true,
+      langfusePublicKey: true,
+      langfuseSecretKey: true,
+      langfuseHost: true,
+      langfusePromptName: true,
+    },
+  });
+
+  // Initialize Langfuse client if enabled
+  let langfuseClient = null;
+  let langfuseTrace = null;
+  let langfusePrompt: string | null = null;
+  let promptVersion: string | undefined;
+
+  if (userSettings?.langfuseEnabled && userSettings.langfusePublicKey && userSettings.langfuseSecretKey) {
+    try {
+      langfuseClient = createLangfuseClient({
+        enabled: true,
+        publicKey: userSettings.langfusePublicKey,
+        secretKey: userSettings.langfuseSecretKey,
+        host: userSettings.langfuseHost,
+        promptName: userSettings.langfusePromptName,
+      });
+
+      // Fetch prompt from Langfuse if configured
+      if (langfuseClient.isEnabled() && userSettings.langfusePromptName) {
+        const promptData = await langfuseClient.fetchPrompt(userSettings.langfusePromptName);
+        if (promptData) {
+          langfusePrompt = promptData.prompt as string;
+          promptVersion = `langfuse-v${promptData.version}`;
+          logger.info(`[inference][${jobId}] Loaded prompt "${userSettings.langfusePromptName}" from Langfuse (version: ${promptData.version})`);
+        }
+      }
+
+      // Create trace
+      if (langfuseClient.isEnabled()) {
+        langfuseTrace = langfuseClient.createTrace({
+          userId: bookmark.userId,
+          bookmarkId: bookmark.id,
+          bookmarkType: bookmark.type,
+          promptVersion,
+        });
+      }
+    } catch (error) {
+      logger.error(`[inference][${jobId}] Langfuse initialization failed: ${error}`);
+      // Continue without Langfuse
+    }
+  }
+
+  const result = await inferTags(
     jobId,
     bookmark,
     inferenceClient,
     job.abortSignal,
+    langfusePrompt,
   );
 
-  if (tags === null) {
+  if (result === null) {
     logger.info(
       `[inference][${jobId}] Skipping tagging for bookmark "${bookmark.id}" due to missing content.`,
     );
+    if (langfuseClient) {
+      await langfuseClient.flushAsync();
+    }
     return;
   }
 
+  const { tags, aiExtractions, promptVersion: resultPromptVersion } = result;
+
+  // Store AI extractions in the database
+  await db
+    .update(bookmarks)
+    .set({
+      aiExtractions: aiExtractions as unknown,
+    })
+    .where(eq(bookmarks.id, bookmarkId));
+
   await connectTags(bookmarkId, tags, bookmark.userId);
+
+  // Record generation in Langfuse
+  if (langfuseClient && langfuseTrace) {
+    try {
+      await langfuseClient.recordGeneration(langfuseTrace, {
+        name: "bookmark-extraction",
+        input: {
+          bookmarkId: bookmark.id,
+          bookmarkType: bookmark.type,
+          promptVersion: resultPromptVersion || promptVersion,
+        },
+        output: aiExtractions,
+        model: serverConfig.inference.textModel,
+        metadata: {
+          tags: tags,
+          extractionFields: Object.keys(aiExtractions),
+        },
+      });
+      
+      await langfuseClient.flushAsync();
+      logger.info(`[inference][${jobId}] Langfuse trace recorded for bookmark "${bookmark.id}"`);
+    } catch (error) {
+      logger.error(`[inference][${jobId}] Failed to record Langfuse generation: ${error}`);
+    }
+  }
 
   // Propagate priority to child jobs
   const enqueueOpts: EnqueueOptions = {

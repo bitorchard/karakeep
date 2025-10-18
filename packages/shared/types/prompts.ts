@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const MAX_PROMPT_TEXT_LENGTH = 500;
+const MAX_PROMPT_TEXT_LENGTH = 10000;
 
 export const zAppliesToEnumSchema = z.enum([
   "all_tagging",

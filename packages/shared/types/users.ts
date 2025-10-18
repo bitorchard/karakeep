@@ -109,3 +109,15 @@ export const zUpdateUserSettingsSchema = zUserSettingsSchema.partial().pick({
   archiveDisplayBehaviour: true,
   timezone: true,
 });
+
+export const zLangfuseSettingsSchema = z.object({
+  langfuseEnabled: z.boolean(),
+  langfusePublicKey: z.string().nullable(),
+  langfuseSecretKey: z.string().nullable(),
+  langfuseHost: z.string().nullable(),
+  langfusePromptName: z.string().nullable(),
+});
+
+export type ZLangfuseSettings = z.infer<typeof zLangfuseSettingsSchema>;
+
+export const zUpdateLangfuseSettingsSchema = zLangfuseSettingsSchema.partial();

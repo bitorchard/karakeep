@@ -86,32 +86,50 @@ class OpenAIInferenceClient implements InferenceClient {
       ...defaultInferenceOptions,
       ..._opts,
     };
-    const chatCompletion = await this.openAI.chat.completions.create(
-      {
-        messages: [{ role: "user", content: prompt }],
-        model: serverConfig.inference.textModel,
-        max_tokens: serverConfig.inference.maxOutputTokens,
-        response_format: mapInferenceOutputSchema(
-          {
-            structured: optsWithDefaults.schema
-              ? zodResponseFormat(optsWithDefaults.schema, "schema")
-              : undefined,
-            json: { type: "json_object" },
-            plain: undefined,
-          },
-          serverConfig.inference.outputSchema,
-        ),
-      },
-      {
-        signal: optsWithDefaults.abortSignal,
-      },
-    );
+    
+    try {
+      const chatCompletion = await this.openAI.chat.completions.create(
+        {
+          messages: [{ role: "user", content: prompt }],
+          model: serverConfig.inference.textModel,
+          max_tokens: serverConfig.inference.maxOutputTokens,
+          response_format: mapInferenceOutputSchema(
+            {
+              structured: optsWithDefaults.schema
+                ? zodResponseFormat(optsWithDefaults.schema, "schema")
+                : undefined,
+              json: { type: "json_object" },
+              plain: undefined,
+            },
+            serverConfig.inference.outputSchema,
+          ),
+        },
+        {
+          signal: optsWithDefaults.abortSignal,
+        },
+      );
 
-    const response = chatCompletion.choices[0].message.content;
-    if (!response) {
-      throw new Error(`Got no message content from OpenAI`);
+      const response = chatCompletion.choices[0].message.content;
+      if (!response) {
+        throw new Error(`Got no message content from OpenAI`);
+      }
+      return { response, totalTokens: chatCompletion.usage?.total_tokens };
+    } catch (error) {
+      // Log the JSON Schema for debugging on error
+      if (optsWithDefaults.schema) {
+        try {
+          const jsonSchema = zodToJsonSchema(optsWithDefaults.schema);
+          logger.error(
+            `[OpenAI] Request failed with schema:\n${JSON.stringify(jsonSchema, null, 2)}`
+          );
+        } catch (schemaError) {
+          logger.error(
+            `[OpenAI] Request failed and couldn't serialize schema: ${schemaError}`
+          );
+        }
+      }
+      throw error;
     }
-    return { response, totalTokens: chatCompletion.usage?.total_tokens };
   }
 
   async inferFromImage(
@@ -124,46 +142,64 @@ class OpenAIInferenceClient implements InferenceClient {
       ...defaultInferenceOptions,
       ..._opts,
     };
-    const chatCompletion = await this.openAI.chat.completions.create(
-      {
-        model: serverConfig.inference.imageModel,
-        max_tokens: serverConfig.inference.maxOutputTokens,
-        response_format: mapInferenceOutputSchema(
-          {
-            structured: optsWithDefaults.schema
-              ? zodResponseFormat(optsWithDefaults.schema, "schema")
-              : undefined,
-            json: { type: "json_object" },
-            plain: undefined,
-          },
-          serverConfig.inference.outputSchema,
-        ),
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${contentType};base64,${image}`,
-                  detail: "low",
+    
+    try {
+      const chatCompletion = await this.openAI.chat.completions.create(
+        {
+          model: serverConfig.inference.imageModel,
+          max_tokens: serverConfig.inference.maxOutputTokens,
+          response_format: mapInferenceOutputSchema(
+            {
+              structured: optsWithDefaults.schema
+                ? zodResponseFormat(optsWithDefaults.schema, "schema")
+                : undefined,
+              json: { type: "json_object" },
+              plain: undefined,
+            },
+            serverConfig.inference.outputSchema,
+          ),
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:${contentType};base64,${image}`,
+                    detail: "low",
+                  },
                 },
-              },
-            ],
-          },
-        ],
-      },
-      {
-        signal: optsWithDefaults.abortSignal,
-      },
-    );
+              ],
+            },
+          ],
+        },
+        {
+          signal: optsWithDefaults.abortSignal,
+        },
+      );
 
-    const response = chatCompletion.choices[0].message.content;
-    if (!response) {
-      throw new Error(`Got no message content from OpenAI`);
+      const response = chatCompletion.choices[0].message.content;
+      if (!response) {
+        throw new Error(`Got no message content from OpenAI`);
+      }
+      return { response, totalTokens: chatCompletion.usage?.total_tokens };
+    } catch (error) {
+      // Log the JSON Schema for debugging on error
+      if (optsWithDefaults.schema) {
+        try {
+          const jsonSchema = zodToJsonSchema(optsWithDefaults.schema);
+          logger.error(
+            `[OpenAI Image] Request failed with schema:\n${JSON.stringify(jsonSchema, null, 2)}`
+          );
+        } catch (schemaError) {
+          logger.error(
+            `[OpenAI Image] Request failed and couldn't serialize schema: ${schemaError}`
+          );
+        }
+      }
+      throw error;
     }
-    return { response, totalTokens: chatCompletion.usage?.total_tokens };
   }
 
   async generateEmbeddingFromText(

@@ -68,7 +68,7 @@ const allEnv = z.object({
   INFERENCE_SUPPORTS_STRUCTURED_OUTPUT: optionalStringBool(),
   INFERENCE_OUTPUT_SCHEMA: z
     .enum(["structured", "json", "plain"])
-    .default("structured"),
+    .default("json"),
   INFERENCE_ENABLE_AUTO_TAGGING: stringBool("true"),
   INFERENCE_ENABLE_AUTO_SUMMARIZATION: stringBool("false"),
   OCR_CACHE_DIR: z.string().optional(),

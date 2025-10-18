@@ -58,6 +58,13 @@ export const users = sqliteTable("user", {
     .notNull()
     .default("show"),
   timezone: text("timezone").default("UTC"),
+  
+  // Langfuse settings
+  langfuseEnabled: integer("langfuseEnabled", { mode: "boolean" }).default(false),
+  langfusePublicKey: text("langfusePublicKey"),
+  langfuseSecretKey: text("langfuseSecretKey"),
+  langfuseHost: text("langfuseHost"),
+  langfusePromptName: text("langfusePromptName"),
 });
 
 export const accounts = sqliteTable(
@@ -165,6 +172,7 @@ export const bookmarks = sqliteTable(
     }).default("pending"),
     summary: text("summary"),
     note: text("note"),
+    aiExtractions: text("aiExtractions", { mode: "json" }),
     type: text("type", {
       enum: [BookmarkTypes.LINK, BookmarkTypes.TEXT, BookmarkTypes.ASSET],
     }).notNull(),

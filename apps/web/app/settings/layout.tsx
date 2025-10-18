@@ -9,6 +9,7 @@ import {
   BarChart3,
   CreditCard,
   Download,
+  FlaskConical,
   GitBranch,
   Image,
   KeyRound,
@@ -59,6 +60,11 @@ const settingsSidebarItems = (
             name: t("settings.ai.ai_settings"),
             icon: <Sparkles size={18} />,
             path: "/settings/ai",
+          },
+          {
+            name: "Langfuse",
+            icon: <FlaskConical size={18} />,
+            path: "/settings/langfuse",
           },
         ]
       : []),

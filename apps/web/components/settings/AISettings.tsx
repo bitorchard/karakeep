@@ -46,7 +46,7 @@ export function PromptEditor() {
     resolver: zodResolver(zNewPromptSchema),
     defaultValues: {
       text: "",
-      appliesTo: "all_tagging",
+      appliesTo: "text",
     },
   });
 
@@ -63,7 +63,7 @@ export function PromptEditor() {
   return (
     <Form {...form}>
       <form
-        className="flex gap-2"
+        className="flex flex-col gap-2"
         onSubmit={form.handleSubmit(async (value) => {
           await createPrompt(value);
           form.resetField("text");
@@ -76,9 +76,9 @@ export function PromptEditor() {
             return (
               <FormItem className="flex-1">
                 <FormControl>
-                  <Input
-                    placeholder="Add a custom prompt"
-                    type="text"
+                  <textarea
+                    placeholder="Enter your complete prompt here. This will completely override the default prompt."
+                    className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     {...field}
                   />
                 </FormControl>
@@ -88,52 +88,54 @@ export function PromptEditor() {
           }}
         />
 
-        <FormField
-          control={form.control}
-          name="appliesTo"
-          render={({ field }) => {
-            return (
-              <FormItem className="flex-0">
-                <FormControl>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Applies To" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="all_tagging">
-                          {t("settings.ai.all_tagging")}
-                        </SelectItem>
-                        <SelectItem value="text">
-                          {t("settings.ai.text_tagging")}
-                        </SelectItem>
-                        <SelectItem value="images">
-                          {t("settings.ai.image_tagging")}
-                        </SelectItem>
-                        <SelectItem value="summary">
-                          {t("settings.ai.summarization")}
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            );
-          }}
-        />
-        <ActionButton
-          type="submit"
-          loading={isCreating}
-          variant="default"
-          className="items-center"
-        >
-          <Plus className="mr-2 size-4" />
-          {t("actions.add")}
-        </ActionButton>
+        <div className="flex gap-2">
+          <FormField
+            control={form.control}
+            name="appliesTo"
+            render={({ field }) => {
+              return (
+                <FormItem className="flex-0">
+                  <FormControl>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Applies To" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="all_tagging">
+                            {t("settings.ai.all_tagging")}
+                          </SelectItem>
+                          <SelectItem value="text">
+                            {t("settings.ai.text_tagging")}
+                          </SelectItem>
+                          <SelectItem value="images">
+                            {t("settings.ai.image_tagging")}
+                          </SelectItem>
+                          <SelectItem value="summary">
+                            {t("settings.ai.summarization")}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
+          />
+          <ActionButton
+            type="submit"
+            loading={isCreating}
+            variant="default"
+            className="items-center"
+          >
+            <Plus className="mr-2 size-4" />
+            {t("actions.add")}
+          </ActionButton>
+        </div>
       </form>
     </Form>
   );
@@ -173,7 +175,7 @@ export function PromptRow({ prompt }: { prompt: ZPrompt }) {
   return (
     <Form {...form}>
       <form
-        className="flex gap-2"
+        className="flex flex-col gap-2"
         onSubmit={form.handleSubmit(async (value) => {
           await updatePrompt(value);
         })}
@@ -199,9 +201,9 @@ export function PromptRow({ prompt }: { prompt: ZPrompt }) {
             return (
               <FormItem className="flex-1">
                 <FormControl>
-                  <Input
-                    placeholder="Add a custom prompt"
-                    type="text"
+                  <textarea
+                    placeholder="Enter your complete prompt here. This will completely override the default prompt."
+                    className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     {...field}
                   />
                 </FormControl>
@@ -211,62 +213,64 @@ export function PromptRow({ prompt }: { prompt: ZPrompt }) {
           }}
         />
 
-        <FormField
-          control={form.control}
-          name="appliesTo"
-          render={({ field }) => {
-            return (
-              <FormItem className="flex-0">
-                <FormControl>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Applies To" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="all_tagging">
-                          {t("settings.ai.all_tagging")}
-                        </SelectItem>
-                        <SelectItem value="text">
-                          {t("settings.ai.text_tagging")}
-                        </SelectItem>
-                        <SelectItem value="images">
-                          {t("settings.ai.image_tagging")}
-                        </SelectItem>
-                        <SelectItem value="summary">
-                          {t("settings.ai.summarization")}
-                        </SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            );
-          }}
-        />
-        <ActionButton
-          loading={isUpdating}
-          variant="secondary"
-          type="submit"
-          className="items-center"
-        >
-          <Save className="mr-2 size-4" />
-          {t("actions.save")}
-        </ActionButton>
-        <ActionButton
-          loading={isDeleting}
-          variant="destructive"
-          onClick={() => deletePrompt({ promptId: prompt.id })}
-          className="items-center"
-          type="button"
-        >
-          <Trash2 className="mr-2 size-4" />
-          {t("actions.delete")}
-        </ActionButton>
+        <div className="flex gap-2">
+          <FormField
+            control={form.control}
+            name="appliesTo"
+            render={({ field }) => {
+              return (
+                <FormItem className="flex-0">
+                  <FormControl>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Applies To" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="all_tagging">
+                            {t("settings.ai.all_tagging")}
+                          </SelectItem>
+                          <SelectItem value="text">
+                            {t("settings.ai.text_tagging")}
+                          </SelectItem>
+                          <SelectItem value="images">
+                            {t("settings.ai.image_tagging")}
+                          </SelectItem>
+                          <SelectItem value="summary">
+                            {t("settings.ai.summarization")}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
+          />
+          <ActionButton
+            loading={isUpdating}
+            variant="secondary"
+            type="submit"
+            className="items-center"
+          >
+            <Save className="mr-2 size-4" />
+            {t("actions.save")}
+          </ActionButton>
+          <ActionButton
+            loading={isDeleting}
+            variant="destructive"
+            onClick={() => deletePrompt({ promptId: prompt.id })}
+            className="items-center"
+            type="button"
+          >
+            <Trash2 className="mr-2 size-4" />
+            {t("actions.delete")}
+          </ActionButton>
+        </div>
       </form>
     </Form>
   );
@@ -282,7 +286,16 @@ export function TaggingRules() {
         {t("settings.ai.tagging_rules")}
       </div>
       <p className="mb-1 text-xs italic text-muted-foreground">
-        {t("settings.ai.tagging_rule_description")}
+        Custom prompts completely override the default prompts. Use this to test
+        different prompt formats and extraction schemas.
+      </p>
+      <p className="mb-1 text-xs italic text-muted-foreground">
+        <strong>Note:</strong> Your prompt must output a JSON object with at
+        least a &quot;tags&quot; field (array of strings). You can also add
+        other fields like &quot;people&quot;, &quot;organizations&quot;,
+        &quot;locations&quot;, &quot;events&quot;, &quot;projects&quot;,
+        &quot;dates&quot;, &quot;deadlines&quot;, &quot;relationships&quot;,
+        &quot;intent&quot;, &quot;topics&quot;, etc.
       </p>
       {isLoading && <FullPageSpinner />}
       {prompts && prompts.length == 0 && (
