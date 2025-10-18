@@ -58,6 +58,11 @@ const openAIResponseSchema = z
   })
   .passthrough(); // Allow any additional fields
 
+// Stricter schema for internal validation
+const strictOpenAIResponseSchema = openAIResponseSchema.extend({
+  entities: z.array(entitySchema),
+});
+
 function parseJsonFromLLMResponse(response: string): unknown {
   const trimmedResponse = response.trim();
 
@@ -300,11 +305,13 @@ async function inferTagsFromText(
   if (!promptData) {
     return null;
   }
+  const response = await inferenceClient.inferFromText(promptData.prompt, {
+    schema: openAIResponseSchema,
+    abortSignal,
+  });
   return {
-    response: await inferenceClient.inferFromText(promptData.prompt, {
-      schema: openAIResponseSchema,
-      abortSignal,
-    }),
+    response,
+    prompt: promptData.prompt,
     promptVersion: promptData.promptVersion,
   };
 }
@@ -315,16 +322,33 @@ async function inferTags(
   inferenceClient: InferenceClient,
   abortSignal: AbortSignal,
   langfusePrompt?: string | null,
-): Promise<{ tags: string[]; aiExtractions: Record<string, unknown>; promptVersion?: string } | null> {
-  let responseData: { response: InferenceResponse; promptVersion?: string } | null = null;
+): Promise<{
+  tags: string[];
+  aiExtractions: Record<string, unknown>;
+  promptVersion?: string;
+  prompt?: string;
+  rawResponse?: string;
+} | null> {
+  let responseData: {
+    response: InferenceResponse;
+    promptVersion?: string;
+    prompt?: string;
+  } | null = null;
   let response: InferenceResponse | null = null;
   let promptVersion: string | undefined;
+  let prompt: string | undefined;
 
   if (bookmark.link || bookmark.text) {
-    responseData = await inferTagsFromText(bookmark, inferenceClient, abortSignal, langfusePrompt);
+    responseData = await inferTagsFromText(
+      bookmark,
+      inferenceClient,
+      abortSignal,
+      langfusePrompt,
+    );
     if (responseData) {
       response = responseData.response;
       promptVersion = responseData.promptVersion;
+      prompt = responseData.prompt;
     }
   } else if (bookmark.asset) {
     switch (bookmark.asset.assetType) {
@@ -357,9 +381,16 @@ async function inferTags(
   }
 
   try {
-    const parsedResponse = openAIResponseSchema.parse(
-      parseJsonFromLLMResponse(response.response),
-    );
+    const parsedJson = parseJsonFromLLMResponse(response.response);
+    const parsedResponse = openAIResponseSchema.parse(parsedJson);
+
+    // Stricter validation for internal processing
+    const strictValidationResult = strictOpenAIResponseSchema.safeParse(parsedJson);
+    if (!strictValidationResult.success) {
+      logger.warn(
+        `[inference][${jobId}] OpenAI response for bookmark "${bookmark.id}" failed strict validation. Missing 'entities' field. Response: ${response.response}`
+      );
+    }
     
     let tags = parsedResponse.tags || [];
     logger.info(
@@ -376,7 +407,13 @@ async function inferTags(
       return tag.trim();
     });
 
-    return { tags, aiExtractions: parsedResponse, promptVersion };
+    return {
+      tags,
+      aiExtractions: parsedResponse,
+      promptVersion,
+      prompt,
+      rawResponse: response.response,
+    };
   } catch (e) {
     const responseSneak = response.response.substring(0, 20);
     throw new Error(
@@ -571,9 +608,11 @@ export async function runTagging(
     }
   }
 
-  const result = await inferTags(
-    jobId,
-    bookmark,
+  let rawResponse: string | undefined;
+  try {
+    const result = await inferTags(
+      jobId,
+      bookmark,
     inferenceClient,
     job.abortSignal,
     langfusePrompt,
@@ -589,7 +628,13 @@ export async function runTagging(
     return;
   }
 
-  const { tags, aiExtractions, promptVersion: resultPromptVersion } = result;
+  const {
+    tags,
+    aiExtractions,
+    promptVersion: resultPromptVersion,
+    prompt,
+  } = result;
+  rawResponse = result.rawResponse;
 
   // Store AI extractions in the database
   await db
@@ -610,12 +655,14 @@ export async function runTagging(
           bookmarkId: bookmark.id,
           bookmarkType: bookmark.type,
           promptVersion: resultPromptVersion || promptVersion,
+          prompt: prompt,
         },
         output: aiExtractions,
         model: serverConfig.inference.textModel,
         metadata: {
           tags: tags,
           extractionFields: Object.keys(aiExtractions),
+          rawResponse: rawResponse,
         },
       });
       
