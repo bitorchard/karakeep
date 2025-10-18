@@ -88,6 +88,7 @@ class OpenAIInferenceClient implements InferenceClient {
     };
     
     try {
+      logger.info(`[OpenAI] Sending request with prompt: "${prompt.substring(0, 100)}..."`);
       const chatCompletion = await this.openAI.chat.completions.create(
         {
           messages: [{ role: "user", content: prompt }],
@@ -113,6 +114,7 @@ class OpenAIInferenceClient implements InferenceClient {
       if (!response) {
         throw new Error(`Got no message content from OpenAI`);
       }
+      logger.info(`[OpenAI] Received response: "${response.substring(0, 100)}..."`);
       return { response, totalTokens: chatCompletion.usage?.total_tokens };
     } catch (error) {
       // Log the JSON Schema for debugging on error
@@ -144,6 +146,7 @@ class OpenAIInferenceClient implements InferenceClient {
     };
     
     try {
+      logger.info(`[OpenAI Image] Sending request with prompt: "${prompt.substring(0, 100)}..."`);
       const chatCompletion = await this.openAI.chat.completions.create(
         {
           model: serverConfig.inference.imageModel,
@@ -183,6 +186,7 @@ class OpenAIInferenceClient implements InferenceClient {
       if (!response) {
         throw new Error(`Got no message content from OpenAI`);
       }
+      logger.info(`[OpenAI Image] Received response: "${response.substring(0, 100)}..."`);
       return { response, totalTokens: chatCompletion.usage?.total_tokens };
     } catch (error) {
       // Log the JSON Schema for debugging on error
